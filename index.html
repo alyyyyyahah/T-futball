@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="tk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>T-FUT</title>
+<style>
+:root{--bg:#000;--s1:#171a1a;--s2:#0f1111;--ink:#f1f4f4;--mut:#8b9696;--ac:#55afb8;--ok:#4cc38a;--bad:#e5604f;--line:#262b2b}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.logo{margin:0;font:900 2rem/1 Impact,"Arial Narrow","Roboto Condensed",sans-serif;letter-spacing:.05em;color:var(--ac)}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px}
+.bal{background:var(--s1);border:1px solid var(--line);padding:6px 12px;border-radius:999px;font-weight:700}
+main{flex:1;background:var(--s2);padding:12px 14px 90px}
+nav{position:fixed;bottom:0;left:0;right:0;max-width:560px;margin:0 auto;background:var(--bg);border-top:1px solid var(--line);display:flex;padding:6px 0 calc(6px + env(safe-area-inset-bottom,0px))}
+nav button{flex:1;background:none;border:0;color:var(--mut);font:inherit;font-size:.72rem;padding:6px 0;cursor:pointer}
+nav button b{display:block;font-size:1.3rem;font-weight:400}
+nav button.on{color:var(--ac)}
+.strip{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px}
+.day{flex:0 0 auto;width:58px;padding:10px 0;border-radius:16px;border:0;background:var(--bg);color:var(--ink);font:inherit;cursor:pointer}
+.day small{display:block;color:var(--mut);font-size:.7rem}.day b{font-size:1.4rem}
+.day.on{background:var(--ac);color:#04282c}.day.on small{color:#04282c}
+h3{font-size:.95rem;color:var(--mut);margin:16px 0 6px;font-weight:600}
+.m{display:grid;grid-template-columns:48px 1fr auto 1fr;gap:8px;align-items:center;background:var(--s1);border-radius:12px;padding:12px;margin-bottom:6px}
+.m .tm{color:var(--mut);font-size:.8rem}.m .r{text-align:right}.m .s{min-width:52px;text-align:center;font-variant-numeric:tabular-nums}
+.empty{text-align:center;color:var(--mut);margin-top:80px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px}
+.chip,.btn{border:0;border-radius:12px;font:inherit;cursor:pointer;padding:10px 14px;background:var(--s1);color:var(--ink)}
+.chip.on,.btn{background:var(--ac);color:#04282c;font-weight:700}
+.btn.alt{background:var(--s1);color:var(--ink)}.btn.bad{background:#2b1a18;color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:9px 4px;text-align:center;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500;font-size:.8rem}td.n{text-align:left}
+.od{grid-column:1/-1;display:flex;gap:6px}.od .chip{flex:1;padding:8px 4px}
+.box{background:var(--s1);border-radius:12px;padding:12px;margin-bottom:8px}
+input,select{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px;font:inherit;margin-bottom:8px}
+.row{display:flex;gap:6px}.row>*{flex:1}
+.auth{padding:40px 24px;display:flex;flex-direction:column;gap:6px}
+.err{color:var(--bad);min-height:1.2em;margin:4px 0}.mut{color:var(--mut)}
+.W{color:var(--ok);font-weight:700}.L{color:var(--bad);font-weight:700}
+.link{background:none;border:0;color:var(--ac);font:inherit;padding:8px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+// Supabase > Project Settings > API: iki bahany şu ýere goý
+const SB_URL='https://YOUR-PROJECT.supabase.co',SB_KEY='YOUR-ANON-KEY';
+const READY=typeof supabase!=='undefined'&&!SB_URL.includes('YOUR-PROJECT');
+const sb=READY?supabase.createClient(SB_URL,SB_KEY):null;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DAYS=['Ýek','Duş','Siş','Çar','Pen','Ann','Şen'];
+const sameDay=(a,b)=>new Date(a).toDateString()===new Date(b).toDateString();
+const hm=d=>new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+let prof=null,matches=[],tab='games',day=new Date(),lg=null,slip=null,pwPending=false,authMode='login',authStep=0,authEmail='';
+
+async function loadMe(){
+  const{data:{session}}=await sb.auth.getSession();
+  if(!session){prof=null;return}
+  const{data}=await sb.from('profiles').select('*').eq('id',session.user.id).single();
+  prof=data;
+}
+async function loadMatches(){const{data}=await sb.from('matches').select('*').order('kickoff');matches=data||[]}
+async function boot(){await loadMe();if(prof)await loadMatches();prof?renderApp():renderAuth()}
+if(!READY){
+  $('#app').innerHTML=`<div class="auth"><h1 class="logo">T-FUT</h1><p class="mut">Programma entek Supabase-e birikdirilmedi.</p>
+  <p>index.html faýlynyň ýokarsyndaky SB_URL we SB_KEY ýerine Supabase maglumatlaryňy ýazyp, faýly öz hosting-ine ýükle (Claude-yň içinde açyp bolmaýar).</p></div>`;
+}else{
+  sb.auth.onAuthStateChange(()=>{if(!pwPending)boot()});
+  boot();
+}
+
+/* ---------- Giriş / registrasiýa ---------- */
+function renderAuth(err=''){
+  const m=authMode,s=authStep;
+  $('#app').innerHTML=`<div class="auth"><h1 class="logo">T-FUT</h1>
+  <p class="mut">${{login:'Giriş',register:'Registrasiýa',reset:'Paroly dikelt'}[m]}</p>
+  <input id="em" type="email" placeholder="Gmail salgy" value="${esc(authEmail)}" ${m!=='login'&&s>0?'disabled':''}>
+  ${m!=='login'&&s===1?'<input id="cd" inputmode="numeric" placeholder="Gmail-e gelen 6 sanly kod">':''}
+  ${m==='login'||s===2?`<input id="pw" type="password" placeholder="${m==='login'?'Parol':'Täze parol'}">`:''}
+  <div class="err">${esc(err)}</div>
+  <button class="btn" data-a="go">${m==='login'?'Girmek':s===0?'Kod iber':s===1?'Kody tassykla':'Paroly saklamak'}</button>
+  ${m==='login'?'<button class="link" data-a="am" data-v="register">Hasabyň ýokmy? Registrasiýa</button><button class="link" data-a="am" data-v="reset">Paroly ýatdan çykardym</button>':'<button class="link" data-a="am" data-v="login">Girişe gaýt</button>'}</div>`;
+}
+async function authGo(){
+  const em=($('#em').value||authEmail).trim().toLowerCase();authEmail=em;
+  if(!/^[a-z0-9._%+-]+@gmail\.com$/.test(em))return renderAuth('Diňe Gmail salgysyny ýaz.');
+  try{
+    if(authMode==='login'){const{error}=await sb.auth.signInWithPassword({email:em,password:$('#pw').value});if(error)throw error;return}
+    if(authStep===0){const{error}=await sb.auth.signInWithOtp({email:em,options:{shouldCreateUser:authMode==='register'}});if(error)throw error;authStep=1}
+    else if(authStep===1){pwPending=true;const{error}=await sb.auth.verifyOtp({email:em,token:$('#cd').value.trim(),type:'email'});if(error){pwPending=false;throw error}authStep=2}
+    else{const p=$('#pw').value;if(p.length<6)return renderAuth('Parol iň az 6 belgi bolmaly.');
+      const{error}=await sb.auth.updateUser({password:p});if(error)throw error;pwPending=false;authStep=0;authMode='login';return boot()}
+    renderAuth();
+  }catch(e){renderAuth(e.message||'Ýalňyşlyk boldy')}
+}
+
+/* ---------- Esasy ekran ---------- */
+function renderApp(){
+  const T=[['games','⚽','Oýunlar'],['table','📊','Tablisa'],['bet','🎯','Stawka'],['me','👤','Profil']];
+  if(prof.role==='admin')T.push(['admin','🛠','Admin']);
+  $('#app').innerHTML=`<header><h1 class="logo">T-FUT</h1><span class="bal">${prof.balance} bal</span></header><main id="mn"></main>
+  <nav>${T.map(t=>`<button data-a="tab" data-v="${t[0]}" class="${t[0]===tab?'on':''}"><b>${t[1]}</b>${t[2]}</button>`).join('')}</nav>`;
+  draw();
+}
+function draw(){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===tab));
+  ({games:vGames,table:vTable,bet:vBet,me:vMe,admin:vAdmin})[tab]();
+}
+async function refresh(){await loadMe();await loadMatches();renderApp()}
+
+const mrow=m=>`<div class="m"><span class="tm">${m.status==='finished'?'GUT':hm(m.kickoff)}</span><span>${esc(m.home)}</span><b class="s">${m.status==='finished'?m.home_goals+' : '+m.away_goals:'–'}</b><span class="r">${esc(m.away)}</span></div>`;
+
+function vGames(){
+  const strip=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()+i-3);return d});
+  const list=matches.filter(m=>sameDay(m.kickoff,day)),by={};
+  list.forEach(m=>(by[m.league]=by[m.league]||[]).push(m));
+  $('#mn').innerHTML=`<div class="strip">${strip.map(d=>`<button class="day ${sameDay(d,day)?'on':''}" data-a="day" data-v="${d.toISOString()}"><small>${DAYS[d.getDay()]}</small><b>${d.getDate()}</b></button>`).join('')}</div>`+
+  (list.length?Object.entries(by).map(([l,ms])=>`<h3>${esc(l)}</h3>`+ms.map(mrow).join('')).join(''):'<p class="empty">Bagyşlaň, maglumat ýok</p>');
+}
+
+async function vTable(){
+  const{data}=await sb.from('standings').select('*');const rows=data||[];
+  const ls=[...new Set(rows.map(r=>r.league))];if(!ls.includes(lg))lg=ls[0];
+  const t=rows.filter(r=>r.league===lg).sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf);
+  $('#mn').innerHTML=ls.length?`<div class="chips">${ls.map(l=>`<button class="chip ${l===lg?'on':''}" data-a="lg" data-v="${esc(l)}">${esc(l)}</button>`).join('')}</div>
+  <table><tr><th>#</th><th style="text-align:left">Topar</th><th>O</th><th>Ý</th><th>D</th><th>Ýl</th><th>Gol</th><th>U</th></tr>
+  ${t.map((r,i)=>`<tr><td>${i+1}</td><td class="n">${esc(r.team)}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${r.gf}-${r.ga}</td><td><b>${r.pts}</b></td></tr>`).join('')}</table>`:'<p class="empty">Tablisa ýok</p>';
+}
+
+async function vBet(){
+  const up=matches.filter(m=>m.status==='scheduled'&&new Date(m.kickoff)>new Date()&&m.o1);
+  const{data:bs}=await sb.from('bets').select('*,matches(home,away)').order('created_at',{ascending:false}).limit(30);
+  const N=['Öý topary ýeňer','Deň','Myhman ýeňer'];
+  $('#mn').innerHTML=`<p class="mut">Wirtual ballar bilen çaklama oýny. Hakyky pul ulanylmaýar.</p>
+  ${slip?`<div class="box"><b>${esc(slip.m.home)} – ${esc(slip.m.away)}</b><br>${N[slip.p]}, koeffisiýent <b>${[slip.m.o1,slip.m.ox,slip.m.o2][slip.p]}</b>
+  <input id="st" type="number" min="1" max="${prof.balance}" value="${Math.min(100,prof.balance)}" style="margin-top:8px">
+  <div class="row"><button class="btn" data-a="place">Çaklamany goý</button><button class="btn alt" data-a="nopick">Ýatyr</button></div></div>`:''}
+  <h3>Açyk oýunlar</h3>${up.length?up.map(m=>`<div class="m" style="grid-template-columns:1fr auto 1fr"><span>${esc(m.home)}</span><span class="tm">${new Date(m.kickoff).toLocaleDateString()} ${hm(m.kickoff)}</span><span class="r">${esc(m.away)}</span>
+  <div class="od">${[m.o1,m.ox,m.o2].map((o,i)=>`<button class="chip" data-a="pick" data-v="${m.id}|${i}">${['1','X','2'][i]} <b>${o}</b></button>`).join('')}</div></div>`).join(''):'<p class="empty" style="margin-top:20px">Açyk oýun ýok</p>'}
+  <h3>Çaklamalarym</h3>${(bs||[]).map(b=>`<div class="m" style="grid-template-columns:1fr auto"><span>${esc(b.matches?.home)} – ${esc(b.matches?.away)}<br><small class="mut">${['1','X','2'][b.pick]} · ${b.odd} · ${b.stake} bal</small></span>
+  <b class="${b.status==='won'?'W':b.status==='lost'?'L':'mut'}">${b.status==='won'?'+'+Math.floor(b.stake*b.odd):b.status==='lost'?'Utuldy':'Garaş'}</b></div>`).join('')||'<p class="mut">Entek çaklama ýok.</p>'}`;
+}
+
+function vMe(){
+  $('#mn').innerHTML=`<div class="box"><b style="font-size:1.2rem">${esc(prof.nickname)}</b><br><span class="mut">${esc(prof.email)}</span></div>
+  <div class="box">Balans: <b>${prof.balance} bal</b><br><small class="mut">Wirtual ballar, hakyky pul däl.</small></div>
+  <button class="btn bad" style="width:100%" data-a="out">Ulgamdan çyk</button>`;
+}
+
+/* ---------- Admin ---------- */
+async function vAdmin(){
+  const{data:us}=await sb.from('profiles').select('*').order('created_at',{ascending:false}).limit(50);
+  const open=matches.filter(m=>m.status==='scheduled');
+  $('#mn').innerHTML=`<h3>Täze oýun</h3><div class="box">
+  <input id="a_lg" placeholder="Liga (mysal: APL, La Liga, Ýokary Liga)" list="lgs"><datalist id="lgs">${[...new Set(matches.map(m=>m.league))].map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
+  <div class="row"><input id="a_h" placeholder="Öý topary"><input id="a_a" placeholder="Myhman"></div>
+  <input id="a_k" type="datetime-local">
+  <div class="row"><input id="a_1" type="number" step="0.01" placeholder="1"><input id="a_x" type="number" step="0.01" placeholder="X"><input id="a_2" type="number" step="0.01" placeholder="2"></div>
+  <div class="row"><button class="btn alt" data-a="auto">Koeffisiýent hasapla</button><button class="btn" data-a="add">Goş</button></div></div>
+  <h3>Netije ýazylmadyk oýunlar</h3>${open.map(m=>`<div class="box">${esc(m.league)}: <b>${esc(m.home)} – ${esc(m.away)}</b><br><small class="mut">${new Date(m.kickoff).toLocaleString()} · ${m.o1}/${m.ox}/${m.o2}</small>
+  <div class="row" style="margin-top:8px"><input id="h${m.id}" type="number" placeholder="Öý gol" style="margin:0"><input id="g${m.id}" type="number" placeholder="Myhman gol" style="margin:0"><button class="btn" data-a="settle" data-v="${m.id}">Netije</button><button class="btn bad" data-a="del" data-v="${m.id}">Poz</button></div></div>`).join('')||'<p class="mut">Ýok.</p>'}
+  <h3>Ulanyjylar</h3>${(us||[]).map(u=>`<div class="box">${esc(u.nickname)} <span class="mut">${esc(u.email)}</span><div class="row" style="margin-top:6px"><input id="b${u.id}" type="number" value="${u.balance}" style="margin:0"><button class="btn alt" data-a="bal" data-v="${u.id}">Balans</button></div></div>`).join('')}`;
+}
+async function strength(){
+  const{data}=await sb.from('standings').select('*'),s={};
+  (data||[]).forEach(r=>s[r.team]=(r.pts+.25*(r.gf-r.ga))/r.played);return s;
+}
+function oddsOf(sh,sa){
+  const d=(sh||0)-(sa||0)+.2,p0=1/(1+Math.exp(-1.1*d)),pd=.28*Math.exp(-.6*Math.abs(d));
+  return[p0*(1-pd),pd,(1-p0)*(1-pd)].map(x=>Math.max(1.05,+(.95/x).toFixed(2)));
+}
+
+/* ---------- Düwmeler ---------- */
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,v=b.dataset.v;
+  try{
+    if(a==='go')return authGo();
+    if(a==='am'){authMode=v;authStep=0;return renderAuth()}
+    if(a==='tab'){tab=v;return draw()}
+    if(a==='day'){day=new Date(v);return draw()}
+    if(a==='lg'){lg=v;return draw()}
+    if(a==='pick'){const[id,p]=v.split('|');slip={m:matches.find(x=>x.id==id),p:+p};return draw()}
+    if(a==='nopick'){slip=null;return draw()}
+    if(a==='out'){await sb.auth.signOut();prof=null;return renderAuth()}
+    if(a==='place'){
+      const x=Math.floor(+$('#st').value);
+      const{error}=await sb.rpc('place_bet',{p_match:slip.m.id,p_pick:slip.p,p_stake:x});
+      if(error)return alert(error.message);slip=null;return refresh();
+    }
+    if(a==='auto'){
+      const s=await strength(),o=oddsOf(s[$('#a_h').value.trim()],s[$('#a_a').value.trim()]);
+      $('#a_1').value=o[0];$('#a_x').value=o[1];$('#a_2').value=o[2];return;
+    }
+    if(a==='add'){
+      if(!$('#a_lg').value.trim()||!$('#a_h').value.trim()||!$('#a_a').value.trim()||!$('#a_k').value)return alert('Liga, toparlar we wagt gerek.');
+      const r={league:$('#a_lg').value.trim(),home:$('#a_h').value.trim(),away:$('#a_a').value.trim(),kickoff:new Date($('#a_k').value).toISOString(),o1:+$('#a_1').value||null,ox:+$('#a_x').value||null,o2:+$('#a_2').value||null};
+      const{error}=await sb.from('matches').insert(r);if(error)return alert(error.message);return refresh();
+    }
+    if(a==='settle'){
+      const hg=$('#h'+v).value,ag=$('#g'+v).value;if(hg===''||ag==='')return alert('Iki golyň hem ýaz.');
+      const{error}=await sb.rpc('settle_match',{p_match:+v,hg:+hg,ag:+ag});if(error)return alert(error.message);return refresh();
+    }
+    if(a==='del'){if(!confirm('Oýny pozmalymy? Şu oýna goýlan çaklamalar hem pozular.'))return;
+      const{error}=await sb.from('matches').delete().eq('id',+v);if(error)return alert(error.message);return refresh()}
+    if(a==='bal'){const{error}=await sb.from('profiles').update({balance:Math.max(0,Math.floor(+$('#b'+v).value))}).eq('id',v);if(error)return alert(error.message);return draw()}
+  }catch(err){alert(err.message||'Ýalňyşlyk')}
+});
+</script>
+</body>
+</html>
