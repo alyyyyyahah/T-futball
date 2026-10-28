@@ -74,26 +74,23 @@ if(!READY){
 
 /* ---------- Giriş / registrasiýa ---------- */
 function renderAuth(err=''){
-  const m=authMode,s=authStep;
+  const m=authMode;
   $('#app').innerHTML=`<div class="auth"><h1 class="logo">T-FUT</h1>
-  <p class="mut">${{login:'Giriş',register:'Registrasiýa',reset:'Paroly dikelt'}[m]}</p>
-  <input id="em" type="email" placeholder="Gmail salgy" value="${esc(authEmail)}" ${m!=='login'&&s>0?'disabled':''}>
-  ${m!=='login'&&s===1?'<input id="cd" inputmode="numeric" placeholder="Gmail-e gelen 6 sanly kod">':''}
-  ${m==='login'||s===2?`<input id="pw" type="password" placeholder="${m==='login'?'Parol':'Täze parol'}">`:''}
+  <p class="mut">${m==='login'?'Giriş':'Registrasiýa'}</p>
+  <input id="em" type="email" placeholder="Gmail salgy" value="${esc(authEmail)}">
+  <input id="pw" type="password" placeholder="Parol (iň az 6 belgi)">
   <div class="err">${esc(err)}</div>
-  <button class="btn" data-a="go">${m==='login'?'Girmek':s===0?'Kod iber':s===1?'Kody tassykla':'Paroly saklamak'}</button>
-  ${m==='login'?'<button class="link" data-a="am" data-v="register">Hasabyň ýokmy? Registrasiýa</button><button class="link" data-a="am" data-v="reset">Paroly ýatdan çykardym</button>':'<button class="link" data-a="am" data-v="login">Girişe gaýt</button>'}</div>`;
+  <button class="btn" data-a="go">${m==='login'?'Girmek':'Registrasiýa bol'}</button>
+  <button class="link" data-a="am" data-v="${m==='login'?'register':'login'}">${m==='login'?'Hasabyň ýokmy? Registrasiýa':'Girişe gaýt'}</button></div>`;
 }
 async function authGo(){
-  const em=($('#em').value||authEmail).trim().toLowerCase();authEmail=em;
+  const em=$('#em').value.trim().toLowerCase(),pw=$('#pw').value;authEmail=em;
   if(!/^[a-z0-9._%+-]+@gmail\.com$/.test(em))return renderAuth('Diňe Gmail salgysyny ýaz.');
+  if(pw.length<6)return renderAuth('Parol iň az 6 belgi bolmaly.');
   try{
-    if(authMode==='login'){const{error}=await sb.auth.signInWithPassword({email:em,password:$('#pw').value});if(error)throw error;return}
-    if(authStep===0){const{error}=await sb.auth.signInWithOtp({email:em,options:{shouldCreateUser:authMode==='register'}});if(error)throw error;authStep=1}
-    else if(authStep===1){pwPending=true;const{error}=await sb.auth.verifyOtp({email:em,token:$('#cd').value.trim(),type:'email'});if(error){pwPending=false;throw error}authStep=2}
-    else{const p=$('#pw').value;if(p.length<6)return renderAuth('Parol iň az 6 belgi bolmaly.');
-      const{error}=await sb.auth.updateUser({password:p});if(error)throw error;pwPending=false;authStep=0;authMode='login';return boot()}
-    renderAuth();
+    const{data,error}=authMode==='login'?await sb.auth.signInWithPassword({email:em,password:pw}):await sb.auth.signUp({email:em,password:pw});
+    if(error)throw error;
+    if(authMode==='register'&&!data.session)return renderAuth('Hasap döredildi. Gmail-e gelen hatdaky baglanyşygy bas, soň giriş.');
   }catch(e){renderAuth(e.message||'Ýalňyşlyk boldy')}
 }
 
