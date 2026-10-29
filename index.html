@@ -34,21 +34,22 @@ th,td{padding:9px 4px;text-align:center;border-bottom:1px solid var(--line)}th{c
 .od{grid-column:1/-1;display:flex;gap:6px}.od .chip{flex:1;padding:8px 4px}
 .box{background:var(--s1);border-radius:12px;padding:12px;margin-bottom:8px}
 input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px;font:inherit;margin-bottom:8px}
-textarea{resize:vertical;min-height:80px}
 .row{display:flex;gap:6px}.row>*{flex:1}
 .auth{padding:40px 24px;display:flex;flex-direction:column;gap:6px}
 .err{color:var(--bad);min-height:1.2em;margin:4px 0}.mut{color:var(--mut)}
 .W{color:var(--ok);font-weight:700}.L{color:var(--bad);font-weight:700}
+.gh{background:#1fa34a;color:#fff;font-weight:800;padding:10px 12px;border-radius:10px 10px 0 0;margin:14px 0 0;letter-spacing:.03em}
+.gb{background:var(--s1);padding:12px;border-radius:0 0 10px 10px;margin-bottom:6px}
+.stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}.st{background:var(--s1);border-radius:10px;padding:10px}.st small{color:var(--mut);display:block;font-size:.7rem}.st b{font-size:1.2rem}
+.nw img{width:100%;border-radius:10px;margin-bottom:8px}
 .link{background:none;border:0;color:var(--ac);font:inherit;padding:8px;cursor:pointer}
-.news-img{width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-top:8px}
-.avatar{width:70px;height:70px;border-radius:50%;object-fit:cover;border:2px solid var(--ac)}
-.profile-header{display:flex;align-items:center;gap:15px;margin-bottom:10px}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.78.0/dist/umd/supabase.js"></script>
 <script>
+// Supabase > Project Settings > API: iki bahany şu ýere goý
 const SB_URL='https://tttzgdeempblhgwyflfs.supabase.co',SB_KEY='sb_publishable_9ZL6jSyUdb8x8_qiZDtZUA_stC_iPj4';
 const READY=typeof supabase!=='undefined'&&!SB_URL.includes('YOUR-PROJECT');
 const sb=READY?supabase.createClient(SB_URL,SB_KEY):null;
@@ -57,15 +58,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const DAYS=['Ýek','Duş','Siş','Çar','Pen','Ann','Şen'];
 const sameDay=(a,b)=>new Date(a).toDateString()===new Date(b).toDateString();
 const hm=d=>new Date(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-let prof=null,matches=[],newsList=[],myBets=[],tab='games',day=new Date(),lg=null,slip=null,authMode='login',authEmail='';
-
-// Ýerli reňk sazlamalaryny ýüklemek (LocalStorage)
-function applyTheme(){
-  const savedAccent=localStorage.getItem('t_accent');
-  const savedBg=localStorage.getItem('t_bg');
-  if(savedAccent) document.documentElement.style.setProperty('--ac', savedAccent);
-  if(savedBg) document.documentElement.style.setProperty('--bg', savedBg);
-}
+let asub='dash',adminImg=null,prof=null,matches=[],tab='games',day=new Date(),lg=null,slip=null,pwPending=false,authMode='login',authStep=0,authEmail='';
 
 async function loadMe(){
   const{data:{session}}=await sb.auth.getSession();
@@ -74,18 +67,12 @@ async function loadMe(){
   prof=data;
 }
 async function loadMatches(){const{data}=await sb.from('matches').select('*').order('kickoff');matches=data||[]}
-async function loadNews(){const{data}=await sb.from('news').select('*').order('created_at',{ascending:false});newsList=data||[]}
-async function loadMyBets(){
-  if(!prof) return;
-  const{data}=await sb.from('bets').select('*,matches(home,away,kickoff)').eq('user_id',prof.id).order('created_at',{ascending:false});
-  myBets=data||[];
-}
-async function boot(){await loadMe();if(prof){await loadMatches();await loadNews();await loadMyBets()} applyTheme(); prof?renderApp():renderAuth()}
-
+async function boot(){await loadMe();if(prof)await loadMatches();prof?renderApp():renderAuth()}
 if(!READY){
-  $('#app').innerHTML=`<div class="auth"><h1 class="logo">T-FUT</h1><p class="mut">Programma entek Supabase-e birikdirilmedi.</p></div>`;
+  $('#app').innerHTML=`<div class="auth"><h1 class="logo">T-FUT</h1><p class="mut">Programma entek Supabase-e birikdirilmedi.</p>
+  <p>index.html faýlynyň ýokarsyndaky SB_URL we SB_KEY ýerine Supabase maglumatlaryňy ýazyp, faýly öz hosting-ine ýükle (Claude-yň içinde açyp bolmaýar).</p></div>`;
 }else{
-  sb.auth.onAuthStateChange(()=>{boot()});
+  sb.auth.onAuthStateChange(()=>{if(!pwPending)boot()});
   boot();
 }
 
@@ -107,13 +94,13 @@ async function authGo(){
   try{
     const{data,error}=authMode==='login'?await sb.auth.signInWithPassword({email:em,password:pw}):await sb.auth.signUp({email:em,password:pw});
     if(error)throw error;
-    if(authMode==='register'&&!data.session)return renderAuth('Hasap döredildi. Gmail-e gelen hatdaky baglanyşygy bas.');
+    if(authMode==='register'&&!data.session)return renderAuth('Hasap döredildi. Gmail-e gelen hatdaky baglanyşygy bas, soň giriş.');
   }catch(e){renderAuth(e.message||'Ýalňyşlyk boldy')}
 }
 
 /* ---------- Esasy ekran ---------- */
 function renderApp(){
-  const T=[['games','⚽','Oýunlar'],['table','📊','Tablisa'],['bet','🎯','Stawka'],['news','📰','Habarlar'],['me','👤','Profil']];
+  const T=[['games','⚽','Oýunlar'],['news','📰','Habarlar'],['table','📊','Tablisa'],['bet','🎯','Stawka'],['me','👤','Profil']];
   if(prof.role==='admin')T.push(['admin','🛠','Admin']);
   $('#app').innerHTML=`<header><h1 class="logo">T-FUT</h1><span class="bal">${prof.balance} bal</span></header><main id="mn"></main>
   <nav>${T.map(t=>`<button data-a="tab" data-v="${t[0]}" class="${t[0]===tab?'on':''}"><b>${t[1]}</b>${t[2]}</button>`).join('')}</nav>`;
@@ -121,9 +108,9 @@ function renderApp(){
 }
 function draw(){
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===tab));
-  ({games:vGames,table:vTable,bet:vBet,news:vNews,me:vMe,admin:vAdmin})[tab]();
+  ({games:vGames,news:vNews,table:vTable,bet:vBet,me:vMe,admin:vAdmin})[tab]();
 }
-async function refresh(){await loadMe();await loadMatches();await loadNews();await loadMyBets();renderApp()}
+async function refresh(){await loadMe();await loadMatches();renderApp()}
 
 const mrow=m=>`<div class="m"><span class="tm">${m.status==='finished'?'GUT':hm(m.kickoff)}</span><span>${esc(m.home)}</span><b class="s">${m.status==='finished'?m.home_goals+' : '+m.away_goals:'–'}</b><span class="r">${esc(m.away)}</span></div>`;
 
@@ -144,190 +131,120 @@ async function vTable(){
   ${t.map((r,i)=>`<tr><td>${i+1}</td><td class="n">${esc(r.team)}</td><td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td><td>${r.gf}-${r.ga}</td><td><b>${r.pts}</b></td></tr>`).join('')}</table>`:'<p class="empty">Tablisa ýok</p>';
 }
 
-function vBet(){
+async function vBet(){
   const up=matches.filter(m=>m.status==='scheduled'&&new Date(m.kickoff)>new Date()&&m.o1);
+  const{data:bs}=await sb.from('bets').select('*,matches(home,away)').order('created_at',{ascending:false}).limit(30);
   const N=['Öý topary ýeňer','Deň','Myhman ýeňer'];
-  $('#mn').innerHTML=`<p class="mut">Wirtual ballar bilen çaklama oýny (Stawka).</p>
+  $('#mn').innerHTML=`<p class="mut">Wirtual ballar bilen çaklama oýny. Hakyky pul ulanylmaýar.</p>
   ${slip?`<div class="box"><b>${esc(slip.m.home)} – ${esc(slip.m.away)}</b><br>${N[slip.p]}, koeffisiýent <b>${[slip.m.o1,slip.m.ox,slip.m.o2][slip.p]}</b>
   <input id="st" type="number" min="1" max="${prof.balance}" value="${Math.min(100,prof.balance)}" style="margin-top:8px">
-  <div class="row"><button class="btn" data-a="place">Stawka goý</button><button class="btn alt" data-a="nopick">Ýatyr</button></div></div>`:''}
+  <div class="row"><button class="btn" data-a="place">Çaklamany goý</button><button class="btn alt" data-a="nopick">Ýatyr</button></div></div>`:''}
   <h3>Açyk oýunlar</h3>${up.length?up.map(m=>`<div class="m" style="grid-template-columns:1fr auto 1fr"><span>${esc(m.home)}</span><span class="tm">${new Date(m.kickoff).toLocaleDateString()} ${hm(m.kickoff)}</span><span class="r">${esc(m.away)}</span>
   <div class="od">${[m.o1,m.ox,m.o2].map((o,i)=>`<button class="chip" data-a="pick" data-v="${m.id}|${i}">${['1','X','2'][i]} <b>${o}</b></button>`).join('')}</div></div>`).join(''):'<p class="empty" style="margin-top:20px">Açyk oýun ýok</p>'}
-  
-  <h3>Meniň Stawka Taryhym (Listesi)</h3>
-  ${myBets.map(b=>`<div class="box"><b>${esc(b.matches?.home)} – ${esc(b.matches?.away)}</b><br>
-  <small class="mut">Wagty: ${new Date(b.matches?.kickoff).toLocaleString()}</small><br>
-  Çaklama: <b>${['1 (Öý)','X (Deň)','2 (Myhman)'][b.pick]}</b> · Koeffisiýent: <b>${b.odd}</b> · Goýlan: <b>${b.stake} bal</b><br>
-  Ýagdaýy: <b class="${b.status==='won'?'W':b.status==='lost'?'L':'mut'}">${b.status==='won'?'Ýeňdi (+'+Math.floor(b.stake*b.odd)+' bal)':b.status==='lost'?'Utuldy':'Garaşylýar'}</b></div>`).join('')||'<p class="mut">Entek stavka taryhy ýok.</p>'}`;
-}
-
-function vNews(){
-  $('#mn').innerHTML=`<h3>Futbol Habarlary we Suratlar</h3>
-  ${prof.role==='admin'?`<div class="box">
-    <input id="n_title" placeholder="Habaryň ady...">
-    <textarea id="n_body" placeholder="Habaryň mazmuny..."></textarea>
-    <input id="n_img" type="file" accept="image/*">
-    <button class="btn" data-a="post_news">Habar Paýlaş</button>
-  </div>`:''}
-  ${newsList.map(n=>`<div class="box"><b>${esc(n.title)}</b><p class="mut" style="font-size:0.9rem">${esc(n.body)}</p>${n.image_url?`<img src="${n.image_url}" class="news-img">`:''}</div>`).join('')||'<p class="empty">Entek habar ýok.</p>'}`;
+  <h3>Çaklamalarym</h3>${(bs||[]).map(b=>`<div class="m" style="grid-template-columns:1fr auto"><span>${esc(b.matches?.home)} – ${esc(b.matches?.away)}<br><small class="mut">${['1','X','2'][b.pick]} · ${b.odd} · ${b.stake} bal</small></span>
+  <b class="${b.status==='won'?'W':b.status==='lost'?'L':'mut'}">${b.status==='won'?'+'+Math.floor(b.stake*b.odd):b.status==='lost'?'Utuldy':'Garaş'}</b></div>`).join('')||'<p class="mut">Entek çaklama ýok.</p>'}`;
 }
 
 function vMe(){
-  const currentAccent=getComputedStyle(document.documentElement).getPropertyValue('--ac').trim()||'#55afb8';
-  const currentBg=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#000000';
-
-  $('#mn').innerHTML=`<div class="box">
-    <div class="profile-header">
-      <img src="${prof.avatar_url || 'https://via.placeholder.com/150'}" class="avatar" id="prevAvatar">
-      <div>
-        <b style="font-size:1.2rem">${esc(prof.nickname || 'Ady ýok')}</b><br>
-        <span class="mut">${esc(prof.email)}</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="box">
-    <h3>Profil maglumatlaryny üýtgetmek</h3>
-    <input id="p_nick" placeholder="Ulanyjy ady (Nickname)" value="${esc(prof.nickname||'')}">
-    <label class="mut" style="font-size:0.85rem">Profil suraty (File saýla)</label>
-    <input id="p_img" type="file" accept="image/*" style="margin-top:4px">
-    <button class="btn" data-a="update_profile">Üýtgeşmeleri Ýatda Sakla</button>
-  </div>
-
-  <div class="box">
-    <h3>Dizaýn we Reňk Sazlamalary</h3>
-    <div class="row">
-      <div><label class="mut" style="font-size:0.8rem">Esasy Reňk (Accent)</label><input type="color" id="picker_ac" value="${currentAccent}" style="height:40px;padding:2px"></div>
-      <div><label class="mut" style="font-size:0.8rem">Fon Reňki (Background)</label><input type="color" id="picker_bg" value="${currentBg}" style="height:40px;padding:2px"></div>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <button class="btn" data-a="save_theme">Reňki Üýtget</button>
-      <button class="btn alt" data-a="reset_theme">Asyl ýagdaýyna getir</button>
-    </div>
-  </div>
-
-  <div class="box">
-    Balans: <b>${prof.balance} bal</b><br><small class="mut">Wirtual ballar.</small>
-  </div>
+  $('#mn').innerHTML=`<div class="box"><b style="font-size:1.2rem">${esc(prof.nickname)}</b><br><span class="mut">${esc(prof.email)}</span></div>
+  <div class="box">Balans: <b>${prof.balance} bal</b><br><small class="mut">Wirtual ballar, hakyky pul däl.</small></div>
   <button class="btn bad" style="width:100%" data-a="out">Ulgamdan çyk</button>`;
 }
 
+/* ---------- Habarlar ---------- */
+async function vNews(){
+  const{data}=await sb.from('news').select('*').order('created_at',{ascending:false}).limit(30);
+  $('#mn').innerHTML=(data||[]).map(n=>`<div class="box nw">${n.image?`<img src="${esc(n.image)}" alt="">`:''}<b>${esc(n.title)}</b><div class="mut" style="font-size:.78rem">${new Date(n.created_at).toLocaleDateString()}</div><p style="white-space:pre-wrap;margin:6px 0 0">${esc(n.body)}</p></div>`).join('')||'<p class="empty">Habar ýok</p>';
+}
+function readImg(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>{const k=Math.min(1,800/i.width),c=document.createElement('canvas');c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.7))};i.onerror=rej;i.src=r.result};r.onerror=rej;r.readAsDataURL(file)})}
+
 /* ---------- Admin ---------- */
 async function vAdmin(){
-  const{data:us}=await sb.from('profiles').select('*').order('created_at',{ascending:false}).limit(50);
-  const open=matches.filter(m=>m.status==='scheduled');
-  $('#mn').innerHTML=`<h3>Täze oýun goşmak</h3><div class="box">
-  <input id="a_lg" placeholder="Liga (mysal: APL, La Liga)" list="lgs"><datalist id="lgs">${[...new Set(matches.map(m=>m.league))].map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
-  <div class="row"><input id="a_h" placeholder="Öý topary"><input id="a_a" placeholder="Myhman"></div>
-  <input id="a_k" type="datetime-local">
-  <div class="row"><input id="a_1" type="number" step="0.01" placeholder="1"><input id="a_x" type="number" step="0.01" placeholder="X"><input id="a_2" type="number" step="0.01" placeholder="2"></div>
-  <button class="btn" data-a="add">Oýun Goş</button></div>
-  
-  <h3>Netije ýazylmadyk oýunlar</h3>${open.map(m=>`<div class="box">${esc(m.league)}: <b>${esc(m.home)} – ${esc(m.away)}</b><br><small class="mut">${new Date(m.kickoff).toLocaleString()}</small>
-  <div class="row" style="margin-top:8px"><input id="h${m.id}" type="number" placeholder="Öý gol" style="margin:0"><input id="g${m.id}" type="number" placeholder="Myhman gol" style="margin:0"><button class="btn" data-a="settle" data-v="${m.id}">Netije</button><button class="btn bad" data-a="del" data-v="${m.id}">Poz</button></div></div>`).join('')||'<p class="mut">Ýok.</p>'}
-
-  <h3>Ulanyjy Balanslaryny Üýtgetmek</h3>${(us||[]).map(u=>`<div class="box">${esc(u.nickname||u.email)} <span class="mut">(${u.balance} bal)</span><div class="row" style="margin-top:6px"><input id="b${u.id}" type="number" value="${u.balance}" style="margin:0"><button class="btn alt" data-a="bal" data-v="${u.id}">Balans Üýtget</button></div></div>`).join('')}`;
+  const S=[['dash','Dashboard'],['news','Habar goş'],['game','Oýun goş'],['users','Ulanyjylar']];
+  let body='';
+  if(asub==='dash'){
+    const{data:st}=await sb.rpc('admin_stats');const s=st||{};
+    body=`<div class="stats"><div class="st"><small>Jemi ulanyjy</small><b>${s.users??0}</b></div><div class="st"><small>Işjeň stawkalar</small><b>${s.pending??0}</b></div><div class="st"><small>Jemi balans</small><b>${s.balance??0} bal</b></div></div>
+    <p class="mut" style="margin-top:12px">Açyk oýunlar: ${matches.filter(m=>m.status==='scheduled').length}</p>`;
+  }else if(asub==='news'){
+    const{data:ns}=await sb.from('news').select('id,title,created_at').order('created_at',{ascending:false}).limit(20);
+    body=`<div class="gh">TÄZE HABAR GOŞ</div><div class="gb"><input id="n_t" placeholder="Sözbaşy"><textarea id="n_b" rows="5" placeholder="Mazmuny"></textarea>
+    <input id="n_i" type="file" accept="image/*"><img id="n_p" ${adminImg?`src="${adminImg}"`:''} style="display:${adminImg?'block':'none'};width:100%;border-radius:10px;margin-bottom:8px" alt="">
+    <button class="btn" style="width:100%" data-a="npub">ÇAP ET</button></div>
+    <h3>Çap edilen habarlar</h3>${(ns||[]).map(n=>`<div class="box row" style="align-items:center"><span>${esc(n.title)}</span><button class="btn bad" style="flex:0 0 auto" data-a="ndel" data-v="${n.id}">Poz</button></div>`).join('')||'<p class="mut">Ýok.</p>'}`;
+  }else if(asub==='game'){
+    const open=matches.filter(m=>m.status==='scheduled');
+    body=`<div class="gh">TÄZE OÝUN GOŞ</div><div class="gb">
+    <div class="row"><input id="a_h" placeholder="Topar 1"><input id="a_a" placeholder="Topar 2"></div>
+    <div class="row"><input id="a_k" type="datetime-local"><input id="a_lg" placeholder="Liga" list="lgs"></div>
+    <datalist id="lgs">${[...new Set(matches.map(m=>m.league))].map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
+    <div class="row"><input id="a_1" type="number" step="0.01" placeholder="W1"><input id="a_x" type="number" step="0.01" placeholder="X"><input id="a_2" type="number" step="0.01" placeholder="W2"></div>
+    <div class="row"><button class="btn alt" data-a="auto">Koeffisiýent hasapla</button><button class="btn" data-a="add">OÝUNY ÇAP ET</button></div></div>
+    <h3>Netije ýazylmadyk oýunlar</h3>${open.map(m=>`<div class="box">${esc(m.league)}: <b>${esc(m.home)} – ${esc(m.away)}</b><br><small class="mut">${new Date(m.kickoff).toLocaleString()} · ${m.o1}/${m.ox}/${m.o2}</small>
+    <div class="row" style="margin-top:8px"><input id="h${m.id}" type="number" placeholder="Öý gol" style="margin:0"><input id="g${m.id}" type="number" placeholder="Myhman gol" style="margin:0"><button class="btn" data-a="settle" data-v="${m.id}">Netije</button><button class="btn bad" data-a="del" data-v="${m.id}">Poz</button></div></div>`).join('')||'<p class="mut">Ýok.</p>'}`;
+  }else{
+    const{data:us}=await sb.from('profiles').select('*').order('created_at',{ascending:false}).limit(200);
+    body=`<div class="gh">ULANYJYLAR WE BALANS</div><div class="gb"><input id="u_q" placeholder="Gözleg (ady ýa-da Gmail)">
+    ${(us||[]).map(u=>`<div class="box ub" data-s="${esc((u.nickname+' '+u.email).toLowerCase())}"><b>${esc(u.nickname)}</b> <span class="mut">${esc(u.email)}</span><br>Balans: <b>${u.balance} bal</b>
+    <div class="row" style="margin-top:6px"><input id="d${u.id}" type="number" value="100" style="margin:0"><button class="btn" data-a="adj" data-v="${u.id}|1">+ Bal</button><button class="btn bad" data-a="adj" data-v="${u.id}|-1">- Bal</button></div></div>`).join('')||'<p class="mut">Ýok.</p>'}</div>`;
+  }
+  $('#mn').innerHTML=`<div class="chips">${S.map(x=>`<button class="chip ${x[0]===asub?'on':''}" data-a="asub" data-v="${x[0]}">${x[1]}</button>`).join('')}</div>`+body;}
+async function strength(){
+  const{data}=await sb.from('standings').select('*'),s={};
+  (data||[]).forEach(r=>s[r.team]=(r.pts+.25*(r.gf-r.ga))/r.played);return s;
+}
+function oddsOf(sh,sa){
+  const d=(sh||0)-(sa||0)+.2,p0=1/(1+Math.exp(-1.1*d)),pd=.28*Math.exp(-.6*Math.abs(d));
+  return[p0*(1-pd),pd,(1-p0)*(1-pd)].map(x=>Math.max(1.05,+(.95/x).toFixed(2)));
 }
 
-/* ---------- Düwmeler we Hereketler ---------- */
+/* ---------- Düwmeler ---------- */
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,v=b.dataset.v;
   try{
     if(a==='go')return authGo();
-    if(a==='am'){authMode=v;return renderAuth()}
+    if(a==='am'){authMode=v;authStep=0;return renderAuth()}
     if(a==='tab'){tab=v;return draw()}
     if(a==='day'){day=new Date(v);return draw()}
     if(a==='lg'){lg=v;return draw()}
     if(a==='pick'){const[id,p]=v.split('|');slip={m:matches.find(x=>x.id==id),p:+p};return draw()}
     if(a==='nopick'){slip=null;return draw()}
     if(a==='out'){await sb.auth.signOut();prof=null;return renderAuth()}
-    
     if(a==='place'){
       const x=Math.floor(+$('#st').value);
       const{error}=await sb.rpc('place_bet',{p_match:slip.m.id,p_pick:slip.p,p_stake:x});
       if(error)return alert(error.message);slip=null;return refresh();
     }
-    
-    if(a==='update_profile'){
-      const newNick=$('#p_nick').value.trim();
-      const fileInput=$('#p_img');
-      let updateData = { nickname: newNick };
-
-      if(fileInput.files && fileInput.files[0]){
-        const file = fileInput.files[0];
-        const reader = new FileReader();
-        reader.onload = async function(e2){
-          updateData.avatar_url = e2.target.result;
-          const {error} = await sb.from('profiles').update(updateData).eq('id', prof.id);
-          if(error) return alert(error.message);
-          alert('Profil üstünlikli täzelendi!');
-          return refresh();
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
-
-      const {error} = await sb.from('profiles').update(updateData).eq('id', prof.id);
-      if(error) return alert(error.message);
-      alert('Profil üstünlikli täzelendi!');
-      return refresh();
+    if(a==='auto'){
+      const s=await strength(),o=oddsOf(s[$('#a_h').value.trim()],s[$('#a_a').value.trim()]);
+      $('#a_1').value=o[0];$('#a_x').value=o[1];$('#a_2').value=o[2];return;
     }
-
-    if(a==='save_theme'){
-      const acColor=$('#picker_ac').value;
-      const bgColor=$('#picker_bg').value;
-      localStorage.setItem('t_accent', acColor);
-      localStorage.setItem('t_bg', bgColor);
-      applyTheme();
-      alert('Dizaýn we reňkler üýtgedildi!');
-      draw();
-    }
-
-    if(a==='reset_theme'){
-      localStorage.removeItem('t_accent');
-      localStorage.removeItem('t_bg');
-      document.documentElement.style.removeProperty('--ac');
-      document.documentElement.style.removeProperty('--bg');
-      alert('Asyl dizaýn ýagdaýyna gaýdyp gelindi!');
-      refresh();
-    }
-
     if(a==='add'){
       if(!$('#a_lg').value.trim()||!$('#a_h').value.trim()||!$('#a_a').value.trim()||!$('#a_k').value)return alert('Liga, toparlar we wagt gerek.');
-      const r={league:$('#a_lg').value.trim(),home:$('#a_h').value.trim(),away:$('#a_a').value.trim(),kickoff:new Date($('#a_k').value).toISOString(),o1:+$('#a_1').value||1.5,ox:+$('#a_x').value||3.0,o2:+$('#a_2').value||2.0};
+      const r={league:$('#a_lg').value.trim(),home:$('#a_h').value.trim(),away:$('#a_a').value.trim(),kickoff:new Date($('#a_k').value).toISOString(),o1:+$('#a_1').value||null,ox:+$('#a_x').value||null,o2:+$('#a_2').value||null};
       const{error}=await sb.from('matches').insert(r);if(error)return alert(error.message);return refresh();
-    }
-    if(a==='post_news'){
-      const title=$('#n_title').value.trim(),body=$('#n_body').value.trim(),fileInput=$('#n_img');
-      if(!title||!body)return alert('Habaryň ady we mazmuny hökmanydyr.');
-      
-      if(fileInput.files && fileInput.files[0]){
-        const file = fileInput.files[0];
-        const reader = new FileReader();
-        reader.onload = async function(e2){
-          await sb.from('news').insert({title, body, image_url: e2.target.result});
-          return refresh();
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
-      const{error}=await sb.from('news').insert({title, body});
-      if(error)return alert(error.message);return refresh();
     }
     if(a==='settle'){
       const hg=$('#h'+v).value,ag=$('#g'+v).value;if(hg===''||ag==='')return alert('Iki golyň hem ýaz.');
       const{error}=await sb.rpc('settle_match',{p_match:+v,hg:+hg,ag:+ag});if(error)return alert(error.message);return refresh();
     }
-    if(a==='del'){if(!confirm('Oýny pozmalymy?'))return;
+    if(a==='del'){if(!confirm('Oýny pozmalymy? Şu oýna goýlan çaklamalar hem pozular.'))return;
       const{error}=await sb.from('matches').delete().eq('id',+v);if(error)return alert(error.message);return refresh()}
-    if(a==='bal'){
-      const newBal=Math.max(0,Math.floor(+$('#b'+v).value));
-      const{error}=await sb.from('profiles').update({balance:newBal}).eq('id',v);
-      if(error)return alert(error.message);
-      alert('Balans üstünlikli üýtgedildi!');
-      return refresh();
-    }
-  }catch(err){alert(err.message||'Ýalňyşlyk boldy')}
+    if(a==='asub'){asub=v;if(v!=='news')adminImg=null;return draw()}
+    if(a==='npub'){const t=$('#n_t').value.trim(),bd=$('#n_b').value.trim();if(!t||!bd)return alert('Sözbaşy we mazmun gerek.');
+      const{error}=await sb.from('news').insert({title:t,body:bd,image:adminImg});if(error)return alert(error.message);adminImg=null;return draw()}
+    if(a==='ndel'){if(!confirm('Habary pozmalymy?'))return;const{error}=await sb.from('news').delete().eq('id',+v);if(error)return alert(error.message);return draw()}
+    if(a==='adj'){const[id,sg]=v.split('|'),n=Math.floor(+$('#d'+id).value);if(!(n>0))return alert('Mukdary ýaz.');
+      const{error}=await sb.rpc('adjust_balance',{p_user:id,p_delta:n*+sg});if(error)return alert(error.message);
+      if(id===prof.id){await loadMe();return renderApp()}return draw()}
+    if(a==='bal'){const{error}=await sb.from('profiles').update({balance:Math.max(0,Math.floor(+$('#b'+v).value))}).eq('id',v);if(error)return alert(error.message);return draw()}
+  }catch(err){alert(err.message||'Ýalňyşlyk')}
+});
+document.addEventListener('change',async e=>{
+  if(e.target.id==='n_i'&&e.target.files[0]){try{adminImg=await readImg(e.target.files[0]);const p=$('#n_p');p.src=adminImg;p.style.display='block'}catch(_){alert('Suraty okap bolmady.')}}
+});
+document.addEventListener('input',e=>{
+  if(e.target.id==='u_q'){const q=e.target.value.toLowerCase();document.querySelectorAll('.ub').forEach(b=>b.style.display=b.dataset.s.includes(q)?'':'none')}
 });
 </script>
 </body>
